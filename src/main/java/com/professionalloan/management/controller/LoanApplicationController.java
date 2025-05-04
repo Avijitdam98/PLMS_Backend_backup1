@@ -17,6 +17,13 @@ import java.util.ArrayList;
 @RequestMapping("/api/loans")
 @CrossOrigin(origins = "http://localhost:5173")
 public class LoanApplicationController {
+
+    private static final String DOWNLOAD_URL_PREFIX = "/api/loans/documents/download/";
+    private static final String PF_PREFIX = "pf_account_";
+    private static final String SALARY_PREFIX = "salary_slip_";
+    private static final String PF_DISPLAY_NAME = "PF Account Statement";
+    private static final String SALARY_DISPLAY_NAME = "Salary Slip";
+
     @Autowired
     private LoanApplicationService loanService;
 
@@ -37,37 +44,32 @@ public class LoanApplicationController {
         }
         LoanApplication savedApplication = loanService.submitApplicationWithFiles(
                 name, profession, purpose, loanAmount, panCard,
-                tenureInMonths,
-                userId, pfAccountPdf, salarySlip
+                tenureInMonths, userId, pfAccountPdf, salarySlip
         );
         return ResponseEntity.ok(savedApplication);
     }
 
-    // - Admin can update status with comment ---
     @PutMapping("/update-status/{applicationId}")
     public ResponseEntity<?> updateLoanStatusWithComment(
             @PathVariable String applicationId,
             @RequestParam String status,
             @RequestParam(required = false) String comment) {
         LoanApplication updated = loanService.updateLoanStatusWithComment(
-            applicationId, ApplicationStatus.valueOf(status.toUpperCase()), comment
+                applicationId, ApplicationStatus.valueOf(status.toUpperCase()), comment
         );
         return ResponseEntity.ok(updated);
     }
 
     @GetMapping("/all")
     public ResponseEntity<List<LoanApplication>> getAllApplications() {
-        List<LoanApplication> allApplications = loanService.getAllApplications();
-        return ResponseEntity.ok(allApplications);
+        return ResponseEntity.ok(loanService.getAllApplications());
     }
 
     @GetMapping("/user/{userId}")
     public ResponseEntity<List<LoanApplication>> getUserApplications(@PathVariable Long userId) {
-        List<LoanApplication> userApplications = loanService.getApplicationsByUserId(userId);
-        return ResponseEntity.ok(userApplications);
+        return ResponseEntity.ok(loanService.getApplicationsByUserId(userId));
     }
 
-    // --- List all documents for a user ---
     @GetMapping("/documents/user/{userId}")
     public ResponseEntity<List<DocumentInfo>> getUserDocuments(@PathVariable Long userId) {
         List<LoanApplication> applications = loanService.getApplicationsByUserId(userId);
@@ -76,24 +78,23 @@ public class LoanApplicationController {
             if (app.getPfAccountPdf() != null) {
                 docs.add(new DocumentInfo(
                         app.getApplicationId(),
-                        "PF Account Statement",
-                        "pf_account_" + app.getApplicationId() + ".pdf",
-                        "/api/loans/documents/download/" + app.getApplicationId() + "/pf"
+                        PF_DISPLAY_NAME,
+                        PF_PREFIX + app.getApplicationId() + ".pdf",
+                        DOWNLOAD_URL_PREFIX + app.getApplicationId() + "/pf"
                 ));
             }
             if (app.getSalarySlip() != null) {
                 docs.add(new DocumentInfo(
                         app.getApplicationId(),
-                        "Salary Slip",
-                        "salary_slip_" + app.getApplicationId() + ".pdf",
-                        "/api/loans/documents/download/" + app.getApplicationId() + "/salary"
+                        SALARY_DISPLAY_NAME,
+                        SALARY_PREFIX + app.getApplicationId() + ".pdf",
+                        DOWNLOAD_URL_PREFIX + app.getApplicationId() + "/salary"
                 ));
             }
         }
         return ResponseEntity.ok(docs);
     }
 
-    // --- : List all documents for a specific application ---
     @GetMapping("/documents/application/{applicationId}")
     public ResponseEntity<List<DocumentInfo>> getApplicationDocuments(@PathVariable String applicationId) {
         LoanApplication app = loanService.getApplicationById(applicationId);
@@ -103,24 +104,23 @@ public class LoanApplicationController {
         List<DocumentInfo> docs = new ArrayList<>();
         if (app.getPfAccountPdf() != null) {
             docs.add(new DocumentInfo(
-                app.getApplicationId(),
-                "PF Account Statement",
-                "pf_account_" + app.getApplicationId() + ".pdf",
-                "/api/loans/documents/download/" + app.getApplicationId() + "/pf"
+                    app.getApplicationId(),
+                    PF_DISPLAY_NAME,
+                    PF_PREFIX + app.getApplicationId() + ".pdf",
+                    DOWNLOAD_URL_PREFIX + app.getApplicationId() + "/pf"
             ));
         }
         if (app.getSalarySlip() != null) {
             docs.add(new DocumentInfo(
-                app.getApplicationId(),
-                "Salary Slip",
-                "salary_slip_" + app.getApplicationId() + ".pdf",
-                "/api/loans/documents/download/" + app.getApplicationId() + "/salary"
+                    app.getApplicationId(),
+                    SALARY_DISPLAY_NAME,
+                    SALARY_PREFIX + app.getApplicationId() + ".pdf",
+                    DOWNLOAD_URL_PREFIX + app.getApplicationId() + "/salary"
             ));
         }
         return ResponseEntity.ok(docs);
     }
 
-    // --- Download a document for a given application ---
     @GetMapping("/documents/download/{applicationId}/{type}")
     public ResponseEntity<byte[]> downloadDocument(
             @PathVariable String applicationId,
@@ -128,24 +128,27 @@ public class LoanApplicationController {
         LoanApplication app = loanService.getApplicationById(applicationId);
         byte[] fileData;
         String fileName;
+
         if ("pf".equals(type)) {
             fileData = app.getPfAccountPdf();
-            fileName = "pf_account_" + applicationId + ".pdf";
+            fileName = PF_PREFIX + applicationId + ".pdf";
         } else if ("salary".equals(type)) {
             fileData = app.getSalarySlip();
-            fileName = "salary_slip_" + applicationId + ".pdf";
+            fileName = SALARY_PREFIX + applicationId + ".pdf";
         } else {
             return ResponseEntity.badRequest().build();
         }
+
         if (fileData == null) {
             return ResponseEntity.notFound().build();
         }
+
         return ResponseEntity.ok()
                 .header("Content-Disposition", "attachment; filename=\"" + fileName + "\"")
                 .body(fileData);
     }
 
-    // --- Inner class for document metadata ---
+    // Inner class to structure document metadata
     public static class DocumentInfo {
         private String applicationId;
         private String documentType;
@@ -159,9 +162,20 @@ public class LoanApplicationController {
             this.downloadUrl = downloadUrl;
         }
 
-        public String getApplicationId() { return applicationId; }
-        public String getDocumentType() { return documentType; }
-        public String getFileName() { return fileName; }
-        public String getDownloadUrl() { return downloadUrl; }
+        public String getApplicationId() {
+            return applicationId;
+        }
+
+        public String getDocumentType() {
+            return documentType;
+        }
+
+        public String getFileName() {
+            return fileName;
+        }
+
+        public String getDownloadUrl() {
+            return downloadUrl;
+        }
     }
 }

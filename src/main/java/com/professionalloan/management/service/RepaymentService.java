@@ -33,6 +33,9 @@ public class RepaymentService {
     @Autowired
     private EmailService emailService;
 
+    @Autowired
+    private NotificationService notificationService;
+
     public Repayment getRepaymentById(Long repaymentId) {
         return repaymentRepository.findById(repaymentId)
                 .orElseThrow(() -> new RepaymentNotFoundException("Repayment not found with ID: " + repaymentId));
@@ -42,14 +45,14 @@ public class RepaymentService {
         double monthlyRate = (interestRate / 12.0) / 100.0;
         double emi = principal.doubleValue() * monthlyRate * Math.pow(1 + monthlyRate, tenureInMonths) /
                 (Math.pow(1 + monthlyRate, tenureInMonths) - 1);
-        return new BigDecimal(emi).setScale(2, RoundingMode.HALF_UP);
+        return BigDecimal.valueOf(emi).setScale(2, RoundingMode.HALF_UP);
     }
 
     public List<Repayment> generateEMISchedule(String applicationId, int tenureInMonths) {
         LoanApplication loan = loanApplicationRepository.findById(applicationId)
                 .orElseThrow(() -> new LoanApplicationNotFoundException("Loan application not found with ID: " + applicationId));
 
-        BigDecimal emiAmount = calculateEMI(loan.getLoanAmount(), tenureInMonths, 12.0); 
+        BigDecimal emiAmount = calculateEMI(loan.getLoanAmount(), tenureInMonths, 12.0);
         List<Repayment> emiSchedule = new ArrayList<>();
         LocalDate startDate = LocalDate.now();
 
@@ -90,6 +93,13 @@ public class RepaymentService {
         }
 
         sendPaymentEmail(repayment);
+
+        notificationService.createNotification(
+                loan.getUser().getId(),
+                "Your EMI payment of ₹" + repayment.getEmiAmount() + " for Loan " + loan.getApplicationId() + " is successful.",
+                "EMI_PAYMENT"
+        );
+
         return repayment;
     }
 
@@ -126,6 +136,14 @@ public class RepaymentService {
         }
 
         sendPaymentEmail(repayment);
+
+        notificationService.createNotification(
+                loan.getUser().getId(),
+                "Your EMI #" + repayment.getEmiNumber() + " payment of ₹" + repayment.getEmiAmount() +
+                        " for Loan " + loan.getApplicationId() + " is successful.",
+                "EMI_PAYMENT"
+        );
+
         return repayment;
     }
 
@@ -136,19 +154,19 @@ public class RepaymentService {
         String subject = "✅ EMI Payment Successful - Confirmation for Loan ID " + loan.getApplicationId();
 
         String message = String.format(
-            "Hello %s,\n\n" +
-            "We are pleased to inform you that your EMI payment has been successfully received.\n\n" +
-            "📌 Payment Details:\n" +
-            "   • Amount Paid: ₹%s\n" +
-            "   • Loan ID: %s\n" +
-            "   • Payment Date: %s\n\n" +
-            "Thank you for your prompt payment. If you have any questions, feel free to contact our support team.\n\n" +
-            "Best regards,\n" +
-            "Professional Loan Management System (PLMS) Team",
-            user.getName(),
-            repayment.getEmiAmount(),
-            loan.getApplicationId(),
-            repayment.getPaidDate()
+                "Hello %s,\n\n" +
+                        "We are pleased to inform you that your EMI payment has been successfully received.\n\n" +
+                        "📌 Payment Details:\n" +
+                        "   • Amount Paid: ₹%s\n" +
+                        "   • Loan ID: %s\n" +
+                        "   • Payment Date: %s\n\n" +
+                        "Thank you for your prompt payment. If you have any questions, feel free to contact our support team.\n\n" +
+                        "Best regards,\n" +
+                        "Professional Loan Management System (PLMS) Team",
+                user.getName(),
+                repayment.getEmiAmount(),
+                loan.getApplicationId(),
+                repayment.getPaidDate()
         );
 
         emailService.sendSimpleMessage(user.getEmail(), subject, message);
@@ -177,4 +195,4 @@ public class RepaymentService {
     public List<Repayment> getRepaymentsByUserId(Long userId) {
         return repaymentRepository.findByLoanApplication_User_Id(userId);
     }
-} 
+}

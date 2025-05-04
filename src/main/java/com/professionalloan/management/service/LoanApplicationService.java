@@ -51,16 +51,16 @@ public class LoanApplicationService {
             MultipartFile pfAccountPdf,
             MultipartFile salarySlip
     ) throws IOException {
+
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException("User not found with ID: " + userId));
 
         List<LoanApplication> existingApps = loanRepo.findByUser_Id(userId);
+
         for (LoanApplication app : existingApps) {
             if (app.getStatus() == ApplicationStatus.APPROVED || app.getStatus() == ApplicationStatus.DISBURSED) {
                 throw new DuplicateLoanApplicationException("You already have an active loan. Cannot apply again until it is closed.");
             }
-        }
-        for (LoanApplication app : existingApps) {
             if (app.getPanCard().equalsIgnoreCase(panCard)) {
                 throw new DuplicateLoanApplicationException("PAN card already exists in another application.");
             }
@@ -78,7 +78,6 @@ public class LoanApplicationService {
         application.setPanCard(panCard);
         application.setTenureInMonths(tenureInMonths);
         application.setUser(user);
-
         application.setPfAccountPdf(pfAccountPdf != null && !pfAccountPdf.isEmpty() ? pfAccountPdf.getBytes() : null);
         application.setSalarySlip(salarySlip != null && !salarySlip.isEmpty() ? salarySlip.getBytes() : null);
 
@@ -86,7 +85,6 @@ public class LoanApplicationService {
             application.setStatus(ApplicationStatus.REJECTED);
             notificationService.notifyLoanStatus(userId, application.getApplicationId(), ApplicationStatus.REJECTED, null);
 
-            //  SEND EMAIL FOR REJECTION
             emailService.sendLoanStatusEmail(
                     user.getEmail(),
                     user.getName(),
@@ -95,13 +93,11 @@ public class LoanApplicationService {
                     creditScore,
                     "Reason: Credit score is below the required threshold (" + MINIMUM_CREDIT_SCORE + ")."
             );
-
         } else {
             application.setStatus(ApplicationStatus.PENDING);
             notificationService.createNotification(userId,
                     "Your loan application has been submitted successfully!", "APPLICATION_SUBMITTED");
 
-            //  SEND EMAIL FOR SUBMISSION
             emailService.sendLoanStatusEmail(
                     user.getEmail(),
                     user.getName(),
@@ -124,17 +120,15 @@ public class LoanApplicationService {
         return savedApplication;
     }
 
+    // ✅ Uses original PAN card value for deterministic score 
     private int fetchCreditScoreByPan(String panCard) {
-        int hash = Math.abs(panCard.toUpperCase().hashCode());
-        return 550 + (hash % 301);
+        int hash = Math.abs(panCard.hashCode());
+        return 550 + (hash % 301);  // Range: 550–850
     }
 
     @Transactional(readOnly = true)
     public List<LoanApplication> getApplicationsByUserId(Long userId) {
-        if (userId == null) {
-            return List.of();
-        }
-        return loanRepo.findByUser_Id(userId);
+        return userId == null ? List.of() : loanRepo.findByUser_Id(userId);
     }
 
     @Transactional(readOnly = true)
@@ -146,6 +140,7 @@ public class LoanApplicationService {
     public LoanApplication updateLoanStatusWithComment(String applicationId, ApplicationStatus status, String comment) {
         LoanApplication application = loanRepo.findById(applicationId)
                 .orElseThrow(() -> new LoanApplicationNotFoundException("Application not found with ID: " + applicationId));
+
         application.setStatus(status);
         application.setStatusComment(comment);
         notificationService.notifyLoanStatus(application.getUser().getId(), applicationId, status, comment);
